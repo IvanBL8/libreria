@@ -1,0 +1,87 @@
+---
+# 1. LA BASE DE DATOS (Totalmente aislada)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb-libreria
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: base-datos
+  template:
+    metadata:
+      labels:
+        app: base-datos
+    spec:
+      containers:
+      - name: mariadb
+        image: mariadb:10.5
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "Libreria2026!"
+        - name: MYSQL_DATABASE
+          value: "inventario_libros"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb-service
+spec:
+  type: ClusterIP # ESTO ES VITAL: Significa "Invisible desde Internet"
+  selector:
+    app: base-datos
+  ports:
+  - port: 3306
+
+---
+# 2. LA PÁGINA WEB DE LA LIBRERÍA (Con página personalizada)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-html
+data:
+  index.html: |
+    <html><body style="font-family: Arial; text-align: center; margin-top: 50px;">
+      <h1 style="color: #2e7d32;">Bienvenidos a la Librería Digital</h1>
+      <p>Servicio Web en Alta Disponibilidad (Kubernetes)</p>
+      <p><i>Base de datos MariaDB conectada y protegida en la red interna.</i></p>
+    </body></html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-libreria
+spec:
+  replicas: 2 # ¡AQUÍ ESTÁ EL FAILOVER Y BALANCEO! 2 copias siempre vivas.
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: web-nginx
+        image: nginx:alpine
+        volumeMounts:
+        - name: html-volume
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: html-volume
+        configMap:
+          name: web-html
+---
+# 3. EXPOSICIÓN AL EXTERIOR (El Balanceador)
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-service
+spec:
+  type: LoadBalancer # K3s lo expondrá en la IP de tu Debian (172.16.10.10)
+  selector:
+    app: frontend
+  ports:
+  - port: 80
+    targetPort: 80
